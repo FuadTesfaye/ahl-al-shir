@@ -14,7 +14,9 @@ import {
   ShieldCheck,
   Check,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react';
+import { calculateSimilarity } from '@/lib/arabic';
 
 interface QuestionDetail {
   id: number;
@@ -300,6 +302,10 @@ export default function AdminGameDetailPage() {
         <div className="space-y-3">
           {questions.map((q) => {
             const isProcessing = gradingId === q.id;
+            const similarityPercent = Math.round(
+              calculateSimilarity(q.userAnswer || '', q.expectedAnswer) * 100
+            );
+            const isCloseMatch = similarityPercent >= 50 && !q.isCorrect;
 
             return (
               <div
@@ -307,12 +313,14 @@ export default function AdminGameDetailPage() {
                 className={`p-5 rounded-2xl bg-white border transition-all ${
                   q.isCorrect
                     ? 'border-emerald-200/80 shadow-xs'
+                    : isCloseMatch
+                    ? 'border-amber-300 bg-amber-50/20 shadow-xs'
                     : 'border-stone-200 shadow-xs'
                 }`}
               >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-stone-100">
                   {/* Question Title & Poet */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="w-7 h-7 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center font-bold text-xs">
                       #{q.questionNumber}
                     </span>
@@ -323,6 +331,28 @@ export default function AdminGameDetailPage() {
                     <span className="text-xs text-stone-500">{q.era}</span>
                     <span className="text-stone-300">•</span>
                     <span className="text-xs text-stone-500">{q.title}</span>
+
+                    {/* Similarity Score Badge */}
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold inline-flex items-center gap-1 ${
+                        similarityPercent >= 80
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : similarityPercent >= 50
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : 'bg-stone-100 text-stone-600'
+                      }`}
+                    >
+                      {similarityPercent >= 70 ? (
+                        <Sparkles className="w-3 h-3 text-amber-600" />
+                      ) : null}
+                      <span>تطابق: {similarityPercent}%</span>
+                    </span>
+
+                    {isCloseMatch && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500 text-stone-950 font-bold text-[10px] animate-pulse">
+                        💡 إجابة قريبة جداً!
+                      </span>
+                    )}
 
                     {q.adminGraded && (
                       <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold mr-2">

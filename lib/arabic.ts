@@ -1,6 +1,6 @@
 /**
  * Arabic text normalization and comparison utilities
- * Designed for poetry hemistich matching
+ * Designed for forgiving, literary poetry hemistich matching
  */
 
 export function normalizeArabic(text: string): string {
@@ -8,7 +8,7 @@ export function normalizeArabic(text: string): string {
 
   return (
     text
-      // 1. Remove all Arabic diacritics (tashkeel / harakat / shadda / sukun / tanween)
+      // 1. Remove all Arabic diacritics (tashkeel / harakat / shadda / sukun / tanween / dagger alef)
       .replace(/[\u064B-\u065F\u0670]/g, '')
       // 2. Remove Tatweel (Kashida)
       .replace(/\u0640/g, '')
@@ -21,13 +21,30 @@ export function normalizeArabic(text: string): string {
       .replace(/ة/g, 'ه')
       // 6. Normalize Alef Maqsura (ى -> ي)
       .replace(/ى/g, 'ي')
-      // 7. Remove punctuation & symbols
-      .replace(/[،؛؟.,!?:;"'«»()[\]{}—\-_/\\#*~`]/g, ' ')
+      // 7. Remove punctuation & symbols (Arabic & Latin)
+      .replace(/[،؛؟.,!?:;"'«»()[\]{}—\-_/\\#*~`^%$@+=<>]/g, ' ')
       // 8. Normalize spaces
       .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase()
   );
+}
+
+/**
+ * Strips common Arabic prefixes (waw, fa, initial alif-lam) for fuzzy root/token matching
+ */
+function stripPrefixes(word: string): string {
+  let w = word;
+  if (w.startsWith('ال') && w.length > 3) {
+    w = w.slice(2);
+  }
+  if ((w.startsWith('و') || w.startsWith('ف') || w.startsWith('ب') || w.startsWith('ل')) && w.length > 3) {
+    w = w.slice(1);
+    if (w.startsWith('ال') && w.length > 3) {
+      w = w.slice(2);
+    }
+  }
+  return w;
 }
 
 /**
@@ -71,52 +88,114 @@ export function calculateSimilarity(s1: string, s2: string): number {
   const norm1 = normalizeArabic(s1);
   const norm2 = normalizeArabic(s2);
 
-  if (norm1 === norm2) return 1.0;
   if (!norm1 || !norm2) return 0.0;
+  if (norm1 === norm2) return 1.0;
 
   const maxLen = Math.max(norm1.length, norm2.length);
   if (maxLen === 0) return 1.0;
 
+  // Character level similarity
   const distance = levenshteinDistance(norm1, norm2);
-  const charSimilarity = 1 - distance / maxLen;
+  const charSimilarity = Math.max(0, 1 - distance / maxLen);
 
   // Word token overlap check
-  const words1 = new Set(norm1.split(' ').filter(Boolean));
-  const words2 = new Set(norm2.split(' ').filter(Boolean));
-  let common = 0;
-  for (const w of words1) {
-    if (words2.has(w)) common++;
-  }
-  const tokenSimilarity = (2 * common) / (words1.size + words2.size);
+  const words1 = norm1.split(' ').filter(Boolean);
+  const words2 = norm2.split(' ').filter(Boolean);
 
-  return Math.max(charSimilarity, tokenSimilarity);
+  if (words1.length === 0 || words2.length === 0) return charSimilarity;
+
+  const stripped1 = words1.map(stripPrefixes);
+  const stripped2 = words2.map(stripPrefixes);
+
+  let exactMatches = 0;
+  for (const w1 of words1) {
+    if (words2.includes(w1)) {
+      exactMatches++;
+    }
+  }
+
+  let rootMatches = 0;
+  for (const s of stripped1) {
+    if (stripped2.includes(s)) {
+      rootMatches++;
+    }
+  }
+
+  const tokenRatio = Math.max(
+    (2 * exactMatches) / (words1.length + words2.length),
+    (2 * rootMatches) / (words1.length + words2.length)
+  );
+
+  // Recall ratio: how many of the expected words did the user write?
+  let foundInExpected = 0;
+  for (const s of stripped1) {
+    if (stripped2.includes(s)) foundInExpected++;
+  }
+  const recallRatio = words2.length > 0 ? foundInExpected / words2.length : 0;
+
+  return Math.max(charSimilarity, tokenRatio, recallRatio * 0.9);
+}
+
+export interface AnswerEvaluation {
+  isCorrect: boolean;
+  isClose: boolean;
+  score: number;
+  similarity: number;
+  message: string;
 }
 
 /**
  * Validates whether user answer is acceptable
+ * Forgiving Arabic poetry evaluation:
+ * - Exact / normalized match -> Correct
+ * - Similarity >= 68% -> Correct (Close enough to deserve the point!)
+ * - Token recall >= 65% -> Correct
  */
-export function isAnswerAcceptable(userAnswer: string, expectedAnswer: string): {
-  isCorrect: boolean;
-  score: number;
-  similarity: number;
-} {
+export function isAnswerAcceptable(userAnswer: string, expectedAnswer: string): AnswerEvaluation {
   const normUser = normalizeArabic(userAnswer);
   const normExpected = normalizeArabic(expectedAnswer);
 
   if (!normUser) {
-    return { isCorrect: false, score: 0, similarity: 0 };
+    return {
+      isCorrect: false,
+      isClose: false,
+      score: 0,
+      similarity: 0,
+      message: 'لم تكتب شيئاً يا شاعر 😭',
+    };
   }
 
   if (normUser === normExpected) {
-    return { isCorrect: true, score: 1, similarity: 1.0 };
+    return {
+      isCorrect: true,
+      isClose: false,
+      score: 1,
+      similarity: 1.0,
+      message: 'أصبتَ! ما شاء الله 👏',
+    };
   }
 
   const similarity = calculateSimilarity(userAnswer, expectedAnswer);
 
-  // If 82% or more match, count as correct!
-  if (similarity >= 0.82) {
-    return { isCorrect: true, score: 1, similarity };
+  // If similarity is 68% or higher, they definitely got the line!
+  if (similarity >= 0.68) {
+    return {
+      isCorrect: true,
+      isClose: similarity < 0.95,
+      score: 1,
+      similarity,
+      message: similarity >= 0.9 ? 'أصبتَ! ما شاء الله 👏' : 'أصبتَ! إجابة ممتازة وقريبة جداً 👏',
+    };
   }
 
-  return { isCorrect: false, score: 0, similarity };
+  // If between 45% and 67%, they almost had it!
+  const isClose = similarity >= 0.45;
+
+  return {
+    isCorrect: false,
+    isClose,
+    score: 0,
+    similarity,
+    message: isClose ? 'كدتَ أن تصيبها! أفلت منك البيت قليلاً 😭' : 'أفلت منك البيت 😭',
+  };
 }

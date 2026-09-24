@@ -52,6 +52,8 @@ export default function GamePage() {
   const [userAnswer, setUserAnswer] = useState('');
   const [feedback, setFeedback] = useState<{
     isCorrect: boolean;
+    isClose?: boolean;
+    message?: string;
     expectedAnswer: string;
     points: number;
   } | null>(null);
@@ -143,6 +145,8 @@ export default function GamePage() {
       // Update feedback state
       setFeedback({
         isCorrect: data.isCorrect,
+        isClose: data.isClose,
+        message: data.message,
         expectedAnswer: data.expectedAnswer,
         points: data.points,
       });
@@ -352,19 +356,27 @@ export default function GamePage() {
                     <CheckCircle2 className="w-7 h-7" />
                   </div>
                   <h3 className="text-xl sm:text-2xl font-bold text-emerald-950 font-poetry">
-                    أصبتَ! ما شاء الله 👏
+                    {feedback.message || 'أصبتَ! ما شاء الله 👏'}
                   </h3>
                   <p className="text-xs sm:text-sm text-emerald-800">
                     أحسنت القول والإكمال يا شاعر! +1 نقطة
                   </p>
                 </div>
               ) : (
-                <div className="p-6 rounded-2xl bg-stone-100 border border-stone-200 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center mx-auto">
-                    <XCircle className="w-7 h-7" />
+                <div className={`p-6 rounded-2xl text-center space-y-3 border ${
+                  feedback.isClose
+                    ? 'bg-amber-50/80 border-amber-300 text-amber-950'
+                    : 'bg-stone-100 border-stone-200 text-stone-900'
+                }`}>
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${
+                    feedback.isClose
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-rose-100 text-rose-700'
+                  }`}>
+                    {feedback.isClose ? <Sparkles className="w-7 h-7" /> : <XCircle className="w-7 h-7" />}
                   </div>
-                  <h3 className="text-xl sm:text-2xl font-bold text-stone-900 font-poetry">
-                    أفلت منك البيت 😭
+                  <h3 className="text-xl sm:text-2xl font-bold font-poetry">
+                    {feedback.message || 'أفلت منك البيت 😭'}
                   </h3>
                   <div className="pt-2 text-right bg-white p-4 rounded-xl border border-stone-200 space-y-1">
                     <span className="text-[11px] font-semibold text-stone-500 block">

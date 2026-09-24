@@ -99,7 +99,9 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       isCorrect: evaluation.isCorrect,
+      isClose: evaluation.isClose,
       similarity: evaluation.similarity,
+      message: evaluation.message,
       points: pointsAwarded,
       currentScore,
       expectedAnswer: question.expectedAnswer,
